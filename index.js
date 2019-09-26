@@ -10,6 +10,7 @@ var Intersecter = require('./lib/intersecter');
 var SegmentChainer = require('./lib/segment-chainer');
 var SegmentSelector = require('./lib/segment-selector');
 var GeoJSON = require('./lib/geojson');
+var Convex = require('./lib/convex');
 
 var buildLog = false;
 var epsilon = Epsilon();
@@ -109,6 +110,21 @@ PolyBool = {
 	},
 	xor: function(poly1, poly2){
 		return operate(poly1, poly2, PolyBool.selectXor);
+	},
+
+	// Convex
+	isConvex: function(poly) {
+		return poly.regions.every(function(poly) { return Convex.isConvex(poly); });
+	},
+	makeConvex: function(poly) {
+		var regions = [];
+		poly.regions.forEach(function(poly) {
+			regions = regions.concat(Convex.makeConvex(poly));
+		});
+		return {
+			regions: regions,
+			inverted: false
+		}
 	}
 };
 

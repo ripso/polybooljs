@@ -1,8 +1,11 @@
 {
-  "name": "polybooljs",
-  "version": "1.2.0",
+  "name": "@prodigy/polybooljs",
+  "version": "1.0.0",
   "description": "Boolean operations on polygons (union, intersection, difference, xor)",
   "main": "index.js",
+  "scripts": {
+    "build": "./build"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/voidqk/polybooljs"
@@ -23,6 +26,10 @@
     "name": "Sean",
     "twitter": "voidqk",
     "url": "http://syntheti.cc"
+  },
+  "devDependencies": {
+    "browserify": "16.5.0",
+    "uglify-js": "3.6.0"
   },
   "license": "MIT"
 }

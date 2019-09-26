@@ -1,4 +1,4 @@
-(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 /*
  * @copyright 2016 Sean Connelly (@voidqk), http://syntheti.cc
  * @license MIT
@@ -11,6 +11,7 @@ var Intersecter = require('./lib/intersecter');
 var SegmentChainer = require('./lib/segment-chainer');
 var SegmentSelector = require('./lib/segment-selector');
 var GeoJSON = require('./lib/geojson');
+var Convex = require('./lib/convex');
 
 var buildLog = false;
 var epsilon = Epsilon();
@@ -110,6 +111,21 @@ PolyBool = {
 	},
 	xor: function(poly1, poly2){
 		return operate(poly1, poly2, PolyBool.selectXor);
+	},
+
+	// Convex
+	isConvex: function(poly) {
+		return poly.regions.every(function(poly) { return Convex.isConvex(poly); });
+	},
+	makeConvex: function(poly) {
+		var regions = [];
+		poly.regions.forEach(function(poly) {
+			regions = regions.concat(Convex.makeConvex(poly));
+		});
+		return {
+			regions: regions,
+			inverted: false
+		}
 	}
 };
 
@@ -126,7 +142,7 @@ if (typeof window === 'object')
 
 module.exports = PolyBool;
 
-},{"./lib/build-log":2,"./lib/epsilon":3,"./lib/geojson":4,"./lib/intersecter":5,"./lib/segment-chainer":7,"./lib/segment-selector":8}],2:[function(require,module,exports){
+},{"./lib/build-log":2,"./lib/convex":3,"./lib/epsilon":4,"./lib/geojson":5,"./lib/intersecter":6,"./lib/segment-chainer":8,"./lib/segment-selector":9}],2:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -242,6 +258,201 @@ function BuildLog(){
 module.exports = BuildLog;
 
 },{}],3:[function(require,module,exports){
+
+
+var TAU = Math.PI * 2;
+
+var normalizeIndex = function(array, index) {
+    while (index < 0)
+        index += array.length;
+    while (index >= array.length)
+        index -= array.length;
+    return index;
+}
+
+var makePoly = function(poly, index1, index2) {
+    var result = [];
+    for (var i = index1; i !== index2 + 1; ++i) {
+        i = normalizeIndex(poly, i);
+        result.push(poly[i]);
+    }
+    return result;
+}
+var splitPoly = function(poly, index1, index2) {
+    return [ makePoly(poly, index1, index2), makePoly(poly, index2, index1) ];
+}
+
+var getPolyTurns = function(poly) {
+    // Check for too few points
+    if (poly.length < 3)
+        return 0;
+
+    var oldPoly = poly[poly.length - 2];
+    var newPoly = poly[poly.length - 1];
+    var oldX = oldPoly[0];
+    var oldY = oldPoly[1];
+    var newX = newPoly[0];
+    var newY = newPoly[1];
+    var newDirection = Math.atan2(newY - oldY, newX - oldX);
+    var angleSum = 0;
+
+    // Check each point, the side ending there, its angle, and accumulate angles
+    for (var ndx = 0; ndx < poly.length; ++ndx) {
+        var newPoint = poly[ndx];
+
+        // Update point coordinates and side direction, check side length
+        oldX = newX;
+        oldY = newY;
+        if (oldX === newPoint[0] && oldY === newPoint[1])
+            continue;
+        var oldDirection = newDirection;
+        newX = newPoint[0];
+        newY = newPoint[1];
+        newDirection = Math.atan2(newY - oldY, newX - oldX);
+
+        // Calculate and check the normalized direction change angle
+        var angle = newDirection - oldDirection;
+        while (angle <= -Math.PI)
+            angle += TAU;
+        while (angle > Math.PI)
+            angle -= TAU;
+
+        // Accumulate the direction change angle
+        angleSum += angle;
+    }
+
+    // Check that the total number of full turns is plus or minus 1
+    return Math.round(angleSum / TAU);
+}
+
+var Convex = {
+    /**
+     * Check if a polygon is convex
+     * @param {number[][]} poly - An array of points defining a polygon
+     * @returns {boolean} True if the polygon is convex
+     */
+    isConvex: function(poly) {
+        // From https://stackoverflow.com/questions/471962/how-do-i-efficiently-determine-if-a-polygon-is-convex-non-convex-or-complex/45372025#45372025
+
+        // Check for too few points
+        if (poly.length < 3)
+            return false;
+
+        var oldPoly = poly[poly.length - 2];
+        var newPoly = poly[poly.length - 1];
+        var oldX = oldPoly[0];
+        var oldY = oldPoly[1];
+        var newX = newPoly[0];
+        var newY = newPoly[1];
+        var newDirection = Math.atan2(newY - oldY, newX - oldX);
+        var angleSum = 0;
+        var orientation;
+
+        // Check each point, the side ending there, its angle, and accumulate angles
+        for (var ndx = 0; ndx < poly.length; ++ndx) {
+            var newPoint = poly[ndx];
+
+            // Update point coordinates and side direction, check side length
+            oldX = newX;
+            oldY = newY;
+            if (oldX === newPoint[0] && oldY === newPoint[1])
+                continue;
+            var oldDirection = newDirection; 
+            newX = newPoint[0];
+            newY = newPoint[1];
+            newDirection = Math.atan2(newY - oldY, newX - oldX);
+            
+            // Calculate and check the normalized direction change angle
+            var angle = newDirection - oldDirection;
+            if (angle <= -Math.PI)
+                angle += TAU;
+            else if (angle > Math.PI)
+                angle -= TAU;
+            if (typeof (orientation) === 'undefined') {
+                // First time through the loop, initialize orientation
+                if (angle === 0)
+                    continue;
+                orientation = angle > 0 ? 1 : -1;
+            } else if (orientation * angle < 0) { // Check orientation is stable
+                return false;
+            }
+            // Accumulate the direction change angle
+            angleSum += angle;
+        }
+
+        // Check that the total number of full turns is plus or minus 1
+        return Math.abs(Math.round(angleSum / TAU)) === 1;
+    },
+
+    /**
+     * Split a single polygon into multiple convex polygons. Does not handle complex polygons (those that intersect themselves).
+     * @param {number[][]} poly - An array of points defining a polygon
+     * @returns {number[][][]} An array of convex polygons
+     */
+    makeConvex: function(poly) {
+        // Check for too few points
+        if (poly.length < 3)
+            return [];
+        else if (poly.length === 3)
+            return [poly];
+
+        var orientation = getPolyTurns(poly);
+        if (Math.abs(orientation) !== 1)
+            throw 'Convex.makeConvex does not support complex polygons. Poly given was: ' + JSON.stringify(poly);
+
+        var oldPoly = poly[poly.length - 2];
+        var newPoly = poly[poly.length - 1];
+        var oldX = oldPoly[0];
+        var oldY = oldPoly[1];
+        var newX = newPoly[0];
+        var newY = newPoly[1];
+        var newDirection = Math.atan2(newY - oldY, newX - oldX);
+        var convexPointIndex;
+
+        // Check each point, the side ending there, its angle, and accumulate angles
+        for (var ndx = 0; ndx < poly.length; ++ndx) {
+            var newPoint = poly[ndx];
+
+            // Update point coordinates and side direction, check side length
+            oldX = newX;
+            oldY = newY;
+            if (oldX === newPoint[0] && oldY === newPoint[1])
+                continue;
+            var oldDirection = newDirection;
+            newX = newPoint[0];
+            newY = newPoint[1];
+            newDirection = Math.atan2(newY - oldY, newX - oldX);
+
+            // Calculate and check the normalized direction change angle
+            var angle = newDirection - oldDirection;
+            if (angle <= -Math.PI)
+                angle += TAU;
+            else if (angle > Math.PI)
+                angle -= TAU;
+
+            if (orientation * angle < 0) { // Check orientation is stable
+                // Convex point
+                if (typeof(convexPointIndex) === 'undefined') {
+                    convexPointIndex = normalizeIndex(poly, ndx - 1);
+                } else {
+                    var split = splitPoly(poly, convexPointIndex, normalizeIndex(poly, ndx - 1));
+                    return [split[0]].concat(this.makeConvex(split[1]));
+                }
+            }
+        }
+
+        if (typeof(convexPointIndex) !== 'undefined') {
+            // Break up poly
+            return splitPoly(poly, convexPointIndex, normalizeIndex(poly, Math.floor(convexPointIndex + poly.length * 0.5)));
+        }
+
+        return [poly];
+    }
+};
+
+module.exports = Convex;
+
+},{}],4:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -413,7 +624,7 @@ function Epsilon(eps){
 
 module.exports = Epsilon;
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 // (c) Copyright 2017, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -603,7 +814,7 @@ var GeoJSON = {
 
 module.exports = GeoJSON;
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -1110,7 +1321,7 @@ function Intersecter(selfIntersection, eps, buildLog){
 
 module.exports = Intersecter;
 
-},{"./linked-list":6}],6:[function(require,module,exports){
+},{"./linked-list":7}],7:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -1193,7 +1404,7 @@ var LinkedList = {
 
 module.exports = LinkedList;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -1447,7 +1658,7 @@ function SegmentChainer(segments, eps, buildLog){
 
 module.exports = SegmentChainer;
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs

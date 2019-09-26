@@ -8,4 +8,5 @@ Thumbs.db
 *.orig
 desktop.ini
 *.swp
-
+node_modules
+package-lock.json
