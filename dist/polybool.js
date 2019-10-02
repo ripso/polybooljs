@@ -368,7 +368,7 @@ var Convex = {
                 angle += TAU;
             else if (angle > Math.PI)
                 angle -= TAU;
-            if (typeof (orientation) === 'undefined') {
+            if (typeof orientation === 'undefined') {
                 // First time through the loop, initialize orientation
                 if (angle === 0)
                     continue;
@@ -432,16 +432,21 @@ var Convex = {
 
             if (orientation * angle < 0) { // Check orientation is stable
                 // Convex point
-                if (typeof(convexPointIndex) === 'undefined') {
-                    convexPointIndex = normalizeIndex(poly, ndx - 1);
+                if (typeof convexPointIndex === 'undefined') {
+                    convexPointIndex = ndx - 1;
                 } else {
-                    var split = splitPoly(poly, convexPointIndex, normalizeIndex(poly, ndx - 1));
-                    return [split[0]].concat(this.makeConvex(split[1]));
+                    var nextConvexPointIndex = ndx - 1;
+                    if (nextConvexPointIndex === convexPointIndex + 1) {
+                        convexPointIndex = nextConvexPointIndex;
+                    } else {
+                        var split = splitPoly(poly, normalizeIndex(poly, convexPointIndex), normalizeIndex(poly, ndx - 1));
+                        return [split[0]].concat(this.makeConvex(split[1]));
+                    }
                 }
             }
         }
 
-        if (typeof(convexPointIndex) !== 'undefined') {
+        if (typeof convexPointIndex !== 'undefined') {
             // Break up poly
             return splitPoly(poly, convexPointIndex, normalizeIndex(poly, Math.floor(convexPointIndex + poly.length * 0.5)));
         }
