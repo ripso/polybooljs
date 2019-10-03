@@ -12,6 +12,7 @@ var SegmentChainer = require('./lib/segment-chainer');
 var SegmentSelector = require('./lib/segment-selector');
 var GeoJSON = require('./lib/geojson');
 var Convex = require('./lib/convex');
+var Simplify = require('./lib/simplify');
 
 var buildLog = false;
 var epsilon = Epsilon();
@@ -119,13 +120,32 @@ PolyBool = {
 	},
 	makeConvex: function(poly) {
 		var regions = [];
-		poly.regions.forEach(function(poly) {
-			regions = regions.concat(Convex.makeConvex(poly));
+		poly.regions.forEach(function (polyRegion) {
+			regions = regions.concat(Convex.makeConvex(polyRegion));
 		});
 		return {
 			regions: regions,
 			inverted: false
 		}
+	},
+
+	// Simplify
+	differenceAndSimplify: function(poly, region) {
+		// Make regions convex
+		poly = this.makeConvex(poly);
+
+		// Check for region entirely contained within poly regions
+		for (var i = 0; i < poly.regions.length; ++i) {
+			var polyRegion = poly.regions[i];
+			if (Simplify.regionContains(polyRegion, region)) {
+				// Divide manually
+				Simplify.carve(polyRegion, region);
+				return poly;
+			}
+		};
+
+		// Apply difference
+		return this.polygon(this.selectDifference(this.combine(this.segments(poly), this.segments({ regions: [region], inverted: false }))));
 	}
 };
 
@@ -142,7 +162,7 @@ if (typeof window === 'object')
 
 module.exports = PolyBool;
 
-},{"./lib/build-log":2,"./lib/convex":3,"./lib/epsilon":4,"./lib/geojson":5,"./lib/intersecter":6,"./lib/segment-chainer":8,"./lib/segment-selector":9}],2:[function(require,module,exports){
+},{"./lib/build-log":2,"./lib/convex":3,"./lib/epsilon":4,"./lib/geojson":5,"./lib/intersecter":6,"./lib/segment-chainer":8,"./lib/segment-selector":9,"./lib/simplify":10}],2:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -259,21 +279,14 @@ module.exports = BuildLog;
 
 },{}],3:[function(require,module,exports){
 
+var Util = require('./util');
 
 var TAU = Math.PI * 2;
-
-var normalizeIndex = function(array, index) {
-    while (index < 0)
-        index += array.length;
-    while (index >= array.length)
-        index -= array.length;
-    return index;
-}
 
 var makePoly = function(poly, index1, index2) {
     var result = [];
     for (var i = index1; i !== index2 + 1; ++i) {
-        i = normalizeIndex(poly, i);
+        i = Util.normalizeIndex(poly, i);
         result.push(poly[i]);
     }
     return result;
@@ -407,11 +420,13 @@ var Convex = {
         var newX = newPoly[0];
         var newY = newPoly[1];
         var newDirection = Math.atan2(newY - oldY, newX - oldX);
-        var convexPointIndex;
+        var concavePointIndex;
+        var foundConvexPoint = false;
+        var firstConvexPointIndex = 0;
 
         // Check each point, the side ending there, its angle, and accumulate angles
-        for (var ndx = 0; ndx < poly.length; ++ndx) {
-            var newPoint = poly[ndx];
+        for (var ndx = 0; ndx - firstConvexPointIndex < poly.length; ++ndx) {
+            var newPoint = poly[Util.normalizeIndex(poly, ndx)];
 
             // Update point coordinates and side direction, check side length
             oldX = newX;
@@ -430,25 +445,37 @@ var Convex = {
             else if (angle > Math.PI)
                 angle -= TAU;
 
-            if (orientation * angle < 0) { // Check orientation is stable
+            if (orientation * angle >= 0) { // Check orientation is stable
                 // Convex point
-                if (typeof convexPointIndex === 'undefined') {
-                    convexPointIndex = ndx - 1;
+                if (!foundConvexPoint) {
+                  foundConvexPoint = true;
+                  firstConvexPointIndex = ndx;
+                }
+            } else if (foundConvexPoint) { // Don't start looking until we're on a convex surface
+                // Concave point
+                if (typeof concavePointIndex === 'undefined') {
+                    if (foundConvexPoint)
+                        concavePointIndex = ndx - 1;
                 } else {
-                    var nextConvexPointIndex = ndx - 1;
-                    if (nextConvexPointIndex === convexPointIndex + 1) {
-                        convexPointIndex = nextConvexPointIndex;
+                    var nextConcavePointIndex = ndx - 1;
+                    if (nextConcavePointIndex === concavePointIndex + 1) {
+                        concavePointIndex = nextConcavePointIndex;
                     } else {
-                        var split = splitPoly(poly, normalizeIndex(poly, convexPointIndex), normalizeIndex(poly, ndx - 1));
+                        var index1 = Util.normalizeIndex(poly, concavePointIndex);
+                        var index2 = Util.normalizeIndex(poly, ndx - 1);
+                        var split = splitPoly(poly, index1, index2);
                         return [split[0]].concat(this.makeConvex(split[1]));
                     }
                 }
             }
         }
 
-        if (typeof convexPointIndex !== 'undefined') {
+        if (typeof concavePointIndex !== 'undefined') {
             // Break up poly
-            return splitPoly(poly, convexPointIndex, normalizeIndex(poly, Math.floor(convexPointIndex + poly.length * 0.5)));
+            var index1 = Util.normalizeIndex(poly, concavePointIndex);
+            var index2 = Util.normalizeIndex(poly, concavePointIndex + 2);
+            var split = splitPoly(poly, index1, index2);
+            return [split[0]].concat(this.makeConvex(split[1]));
         }
 
         return [poly];
@@ -457,7 +484,7 @@ var Convex = {
 
 module.exports = Convex;
 
-},{}],4:[function(require,module,exports){
+},{"./util":11}],4:[function(require,module,exports){
 // (c) Copyright 2016, Sean Connelly (@voidqk), http://syntheti.cc
 // MIT License
 // Project Home: https://github.com/voidqk/polybooljs
@@ -1830,5 +1857,100 @@ var SegmentSelector = {
 };
 
 module.exports = SegmentSelector;
+
+},{}],10:[function(require,module,exports){
+
+var Util = require('./util');
+
+/**
+ * The direction of the point relative to the line segment as determined by the cross-product
+ * @param {number[]} segmentStart 
+ * @param {number[]} segmentEnd 
+ * @param {number[]} point 
+ * @returns {number} right (>0), left (<0), or straight (0)
+ */
+var pointDirection = function(segmentStart, segmentEnd, point) {
+    var segment = {
+        x: segmentEnd[0] - segmentStart[0],
+        y: segmentEnd[1] - segmentStart[1]
+    };
+    var p = {
+        x: point[0] - segmentStart[0],
+        y: point[1] - segmentStart[1]
+    }
+    return segment.x * p.y - segment.y * p.x;
+}
+
+var distanceSquared = function(p1, p2) {
+    var dx = p2[0] - p1[0];
+    var dy = p2[1] - p1[1];
+    return dx * dx + dy * dy;
+}
+
+var Simplify = {
+    /**
+     * Whether subpoly is entirely contained within poly
+     * @param {number[][]} poly 
+     * @param {number[][]} subpoly 
+     * @returns {boolean}
+     */
+    regionContains: function(poly, subpoly) {
+        for (var i = 0; i < subpoly.length; ++i) {
+            var subpolyPoint = subpoly[i];
+            var firstSubpolyPointDirection = pointDirection(poly[poly.length - 1], poly[0], subpolyPoint);
+            for (var j = 1; j < poly.length; ++j) {
+                var subpolyPointDirection = pointDirection(poly[j - 1], poly[j], subpolyPoint);
+                if (firstSubpolyPointDirection === 0) {
+                    firstSubpolyPointDirection = subpolyPointDirection;
+                } else if (subpolyPointDirection !== 0 && (subpolyPointDirection > 0) !== (firstSubpolyPointDirection > 0)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    },
+
+    /**
+     * Carve a poly out of another poly. Modifies the larger region.
+     * @param {number[][]} region
+     * @param {number[][]} subregion
+     */
+    carve: function(region, subregion) {
+        var targetPoint = region[region.length - 1];
+        var closestPoint, closestPointDistance = Infinity;
+        for (var i = 0; i < subregion.length; ++i) {
+            var distance = distanceSquared(targetPoint, subregion[i]);
+            if (distance < closestPointDistance) {
+                closestPointDistance = distance;
+                closestPoint = i;
+            }
+        }
+
+        var regionWinding = pointDirection(region[0], region[1], region[2]) > 0;
+        var subregionWinding = pointDirection(subregion[0], subregion[1], subregion[2]) > 0
+        var backward = regionWinding === subregionWinding;
+        for (var i = 0; i < subregion.length; ++i) {
+            region.push(subregion[Util.normalizeIndex(subregion, closestPoint + (backward ? -i : i))]);
+        }
+        region.push(subregion[closestPoint]);
+        region.push(targetPoint);
+    }
+};
+
+module.exports = Simplify;
+
+},{"./util":11}],11:[function(require,module,exports){
+
+var Util = {
+    normalizeIndex: function (array, index) {
+        while (index < 0)
+            index += array.length;
+        while (index >= array.length)
+            index -= array.length;
+        return index;
+    }
+};
+
+module.exports = Util;
 
 },{}]},{},[1]);

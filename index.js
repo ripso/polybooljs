@@ -11,6 +11,7 @@ var SegmentChainer = require('./lib/segment-chainer');
 var SegmentSelector = require('./lib/segment-selector');
 var GeoJSON = require('./lib/geojson');
 var Convex = require('./lib/convex');
+var Simplify = require('./lib/simplify');
 
 var buildLog = false;
 var epsilon = Epsilon();
@@ -118,13 +119,32 @@ PolyBool = {
 	},
 	makeConvex: function(poly) {
 		var regions = [];
-		poly.regions.forEach(function(poly) {
-			regions = regions.concat(Convex.makeConvex(poly));
+		poly.regions.forEach(function (polyRegion) {
+			regions = regions.concat(Convex.makeConvex(polyRegion));
 		});
 		return {
 			regions: regions,
 			inverted: false
 		}
+	},
+
+	// Simplify
+	differenceAndSimplify: function(poly, region) {
+		// Make regions convex
+		poly = this.makeConvex(poly);
+
+		// Check for region entirely contained within poly regions
+		for (var i = 0; i < poly.regions.length; ++i) {
+			var polyRegion = poly.regions[i];
+			if (Simplify.regionContains(polyRegion, region)) {
+				// Divide manually
+				Simplify.carve(polyRegion, region);
+				return poly;
+			}
+		};
+
+		// Apply difference
+		return this.polygon(this.selectDifference(this.combine(this.segments(poly), this.segments({ regions: [region], inverted: false }))));
 	}
 };
 
