@@ -129,6 +129,11 @@ PolyBool = {
 	},
 
 	// Simplify
+	/**
+	 * Removes polygons defining negative space (polygons completely contained within other polygons)
+	 * @param {*} poly The PolyBool poly structure to subtract from
+	 * @param {number[][]} region A polygon to subtract from the (presumably) larger poly
+	 */
 	differenceAndSimplify: function(poly, region) {
 		// Make regions convex
 		poly = this.makeConvex(poly);

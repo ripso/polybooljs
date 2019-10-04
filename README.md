@@ -14,6 +14,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Resources
 
+* [Forked from voidqk's polybooljs](https://github.com/voidqk/polybooljs)
 * [Demo + Animation](https://rawgit.com/voidqk/polybooljs/master/dist/demo.html)
 * [Companion Tutorial](http://syntheti.cc/article/polygon-clipping-pt2/)
 * Based somewhat on the F. Martinez (2008) algorithm:
@@ -22,7 +23,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Installing
 
-`npm install polybooljs`
+`npm install @prodigy/polybooljs`
 
 Or, for the browser, look in the [`dist/`](https://github.com/voidqk/polybooljs/tree/master/dist)
 directory for a single file build.  When included on a page, it will expose the global `PolyBool`.
@@ -64,6 +65,11 @@ var poly = PolyBool.intersect    (poly1, poly2);
 var poly = PolyBool.difference   (poly1, poly2); // poly1 - poly2
 var poly = PolyBool.differenceRev(poly1, poly2); // poly2 - poly1
 var poly = PolyBool.xor          (poly1, poly2);
+
+var poly = PolyBool.differenceAndSimplify(poly1, poly2); // handles negative polygons
+var poly = PolyBool.makeConvex(poly);
+
+PolyBool.isConvex(poly);
 ```
 
 Where `poly1`, `poly2`, and the return value are Polygon objects, in the format of:
