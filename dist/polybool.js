@@ -287,6 +287,7 @@ module.exports = BuildLog;
 var Util = require('./util');
 
 var TAU = Math.PI * 2;
+var HALF_PI = Math.PI * 0.5;
 
 var makePoly = function(poly, index1, index2) {
     var result = [];
@@ -343,6 +344,14 @@ var getPolyTurns = function(poly) {
     return Math.round(angleSum / TAU);
 }
 
+var normalizeAngle = function(angle) {
+    while (angle <= -Math.PI)
+        angle += TAU;
+    while (angle > Math.PI)
+        angle -= TAU;
+    return angle;
+}
+
 var Convex = {
     /**
      * Check if a polygon is convex
@@ -381,11 +390,7 @@ var Convex = {
             newDirection = Math.atan2(newY - oldY, newX - oldX);
             
             // Calculate and check the normalized direction change angle
-            var angle = newDirection - oldDirection;
-            if (angle <= -Math.PI)
-                angle += TAU;
-            else if (angle > Math.PI)
-                angle -= TAU;
+            var angle = normalizeAngle(newDirection - oldDirection);
             if (typeof orientation === 'undefined') {
                 // First time through the loop, initialize orientation
                 if (angle === 0)
@@ -426,6 +431,7 @@ var Convex = {
         var newY = newPoly[1];
         var newDirection = Math.atan2(newY - oldY, newX - oldX);
         var concavePointIndex;
+        var concavePointDirection;
         var foundConvexPoint = false;
         var firstConvexPointIndex = 0;
 
@@ -444,13 +450,10 @@ var Convex = {
             newDirection = Math.atan2(newY - oldY, newX - oldX);
 
             // Calculate and check the normalized direction change angle
-            var angle = newDirection - oldDirection;
-            if (angle <= -Math.PI)
-                angle += TAU;
-            else if (angle > Math.PI)
-                angle -= TAU;
+            var angle = normalizeAngle(newDirection - oldDirection);
 
-            if (orientation * angle >= 0) { // Check orientation is stable
+            // Check orientation is stable
+            if (orientation * angle >= 0 && (typeof concavePointDirection === 'undefined' || Math.abs(normalizeAngle(oldDirection - concavePointDirection)) < HALF_PI)) {
                 // Convex point
                 if (!foundConvexPoint) {
                   foundConvexPoint = true;
@@ -459,8 +462,10 @@ var Convex = {
             } else if (foundConvexPoint) { // Don't start looking until we're on a convex surface
                 // Concave point
                 if (typeof concavePointIndex === 'undefined') {
-                    if (foundConvexPoint)
+                    if (foundConvexPoint) {
                         concavePointIndex = ndx - 1;
+                        concavePointDirection = newDirection;
+                    }
                 } else {
                     var nextConcavePointIndex = ndx - 1;
                     if (nextConcavePointIndex === concavePointIndex + 1) {
@@ -1895,7 +1900,7 @@ var distanceSquared = function(p1, p2) {
 var Simplify = {
     /**
      * Whether subpoly is entirely contained within poly
-     * @param {number[][]} poly 
+     * @param {number[][]} poly A convex poly
      * @param {number[][]} subpoly 
      * @returns {boolean}
      */
@@ -1916,8 +1921,8 @@ var Simplify = {
     },
 
     /**
-     * Carve a poly out of another poly. Modifies the larger region.
-     * @param {number[][]} region
+     * Carve a poly completely contained within another convex poly. Modifies the larger region.
+     * @param {number[][]} region a convex poly
      * @param {number[][]} subregion
      */
     carve: function(region, subregion) {
