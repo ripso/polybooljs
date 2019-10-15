@@ -26,6 +26,9 @@
   "author": {
     "name": "Chris Light"
   },
+  "dependencies": {
+    "earcut": "2.1.5"
+  },
   "devDependencies": {
     "browserify": "16.5.0",
     "jest": "^24.9.0",

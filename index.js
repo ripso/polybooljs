@@ -12,6 +12,7 @@ var SegmentSelector = require('./lib/segment-selector');
 var GeoJSON = require('./lib/geojson');
 var Convex = require('./lib/convex');
 var Simplify = require('./lib/simplify');
+var earcut = require('earcut');
 
 var buildLog = false;
 var epsilon = Epsilon();
@@ -120,7 +121,14 @@ PolyBool = {
 	makeConvex: function(poly) {
 		var regions = [];
 		poly.regions.forEach(function (polyRegion) {
-			regions = regions.concat(Convex.makeConvex(polyRegion));
+			var transformed = [];
+			polyRegion.forEach(function (point) {
+				transformed.push(point[0]);
+				transformed.push(point[1]);
+			});
+			var indices = earcut(transformed);
+			for (var i = 0; i < indices.length; i += 3)
+				regions.push([polyRegion[indices[i]], polyRegion[indices[i+1]], polyRegion[indices[i+2]]]);
 		});
 		return {
 			regions: regions,
@@ -133,6 +141,7 @@ PolyBool = {
 	 * Removes polygons defining negative space (polygons completely contained within other polygons)
 	 * @param {*} poly The PolyBool poly structure to subtract from
 	 * @param {number[][]} region A polygon to subtract from the (presumably) larger poly
+	 * @returns {*} The PolyBool poly structure resulting from the operation
 	 */
 	differenceAndSimplify: function(poly, region) {
 		// Make regions convex
