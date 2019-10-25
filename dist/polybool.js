@@ -129,7 +129,7 @@ PolyBool = {
 			});
 			var indices = earcut(transformed);
 			for (var i = 0; i < indices.length; i += 3)
-				regions = regions.concat([[polyRegion[indices[i]], polyRegion[indices[i+1]], polyRegion[i+2]]]);
+				regions.push([polyRegion[indices[i]], polyRegion[indices[i+1]], polyRegion[indices[i+2]]]);
 		});
 		return {
 			regions: regions,
