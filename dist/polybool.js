@@ -158,8 +158,30 @@ PolyBool = {
 			}
 		};
 
-		// Apply difference
-		return this.polygon(this.selectDifference(this.combine(this.segments(poly), this.segments({ regions: [region], inverted: false }))));
+		// Apply difference per region
+		var result = { regions: [], inverted: false };
+		for (var i = 0; i < poly.regions.length; ++i) {
+			var polyRegion = poly.regions[i];
+			Array.prototype.push.apply(
+				result.regions,
+				this.polygon(this.selectDifference(this.combine(this.regionSegments(polyRegion), this.regionSegments(region)))).regions
+			);
+		}
+		return result;
+	},
+	
+	/**
+	 * Faster segment creation for a single non-inverted region
+	 * @param {number[][]} region The region
+	 * @returns {*} The segments for the region
+	 */
+	regionSegments: function(region) {
+		var i = Intersecter(true, epsilon, buildLog);
+		i.addRegion(region);
+		return {
+			segments: i.calculate(false),
+			inverted: false
+		};
 	}
 };
 
