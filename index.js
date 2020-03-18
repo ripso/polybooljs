@@ -159,8 +159,12 @@ PolyBool = {
 
 		// Apply difference per region
 		var result = { regions: [], inverted: false };
-		for (var polyRegion of poly.regions) {
-			result.regions.push(...this.polygon(this.selectDifference(this.combine(this.regionSegments(polyRegion), this.regionSegments(region)))).regions);
+		for (var i = 0; i < poly.regions.length; ++i) {
+			var polyRegion = poly.regions[i];
+			Array.prototype.push.apply(
+				result.regions,
+				this.polygon(this.selectDifference(this.combine(this.regionSegments(polyRegion), this.regionSegments(region)))).regions
+			);
 		}
 		return result;
 	},
